@@ -1,0 +1,1897 @@
+openapi: 3.0.3
+info:
+  title: Strobe Local API
+  version: 1.0.0
+  contact:
+    name: CAB432 Teaching Team
+    email: cab432@qut.edu.au
+  description: |
+    Local OpenAPI specification for the Strobe Python server.
+
+    This spec is designed for direct import into Insomnia or other API clients and reflects
+    the request and response shapes implemented by the FastAPI server in python-server/src.
+
+    Authentication uses email + password.
+    Username is system-managed and mirrors the email value.
+
+    Authentication uses JWT bearer tokens. Register or log in first, then send:
+
+    `Authorization: Bearer <token>`
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+tags:
+  - name: System
+    description: Health and operational checks
+  - name: Auth
+    description: User registration and login
+  - name: Users
+    description: Public user discovery, profiles, and account deletion
+  - name: Follows
+    description: Follow graph operations and follower listings
+  - name: Posts
+    description: Post creation, retrieval, interaction, and moderation
+  - name: Comments
+    description: Post comment operations
+  - name: Feed
+    description: Personalized post feed for authenticated users
+  - name: Moments
+    description: Ephemeral image-based moment content
+  - name: Uploads
+    description: Upload URL generation and multipart file upload
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter the JWT token only. Do not include the "Bearer " prefix.
+
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      description: Resource identifier.
+      schema:
+        type: string
+        example: 550e8400-e29b-41d4-a716-446655440000
+    UserIdParam:
+      in: path
+      name: userId
+      required: true
+      description: User identifier.
+      schema:
+        type: string
+        example: user_12345678
+    PostIdParam:
+      in: path
+      name: postId
+      required: true
+      description: Post identifier.
+      schema:
+        type: string
+        example: post_12345678
+    CommentIdParam:
+      in: path
+      name: commentId
+      required: true
+      description: Comment identifier.
+      schema:
+        type: string
+        example: comment_12345678
+    FileIdParam:
+      in: path
+      name: fileId
+      required: true
+      description: File identifier returned by POST /v1/uploads/url.
+      schema:
+        type: string
+        example: 5f9439f1
+    QueryLimit:
+      in: query
+      name: limit
+      required: false
+      description: Maximum number of records to return. The server caps this at 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    QueryOffset:
+      in: query
+      name: offset
+      required: false
+      description: Number of records to skip before returning results.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: ValidationError
+        message:
+          type: string
+          example: Title is required
+
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:14:23.000Z
+
+    UserStats:
+      type: object
+      required: [followers, following, posts]
+      properties:
+        followers:
+          type: integer
+          example: 12
+        following:
+          type: integer
+          example: 7
+        posts:
+          type: integer
+          example: 4
+
+    User:
+      type: object
+      required: [id, username, email, role, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          example: jake.bradford@example.com
+        email:
+          type: string
+          format: email
+          example: jake.bradford@example.com
+        role:
+          type: string
+          enum: [user, moderator]
+          example: user
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:00:00.000Z
+
+    EnrichedUser:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [stats, currentUserFollows]
+          properties:
+            stats:
+              $ref: "#/components/schemas/UserStats"
+            currentUserFollows:
+              type: boolean
+              example: false
+
+    PostAuthor:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          example: jake.bradford@example.com
+
+    PostStats:
+      type: object
+      required: [likes, comments]
+      properties:
+        likes:
+          type: integer
+          example: 3
+        comments:
+          type: integer
+          example: 1
+
+    Post:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          title,
+          description,
+          images,
+          status,
+          createdAt,
+          updatedAt,
+          author,
+          stats,
+          currentUserLiked,
+        ]
+      properties:
+        id:
+          type: string
+          example: 660e8400-e29b-41d4-a716-446655440001
+        userId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        title:
+          type: string
+          example: Sunrise ride
+        description:
+          type: string
+          example: Cold start, good coffee, and an empty river path.
+        images:
+          type: array
+          items:
+            type: string
+          example:
+            - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+        status:
+          type: string
+          enum: [active, hidden]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:10:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:10:00.000Z
+        hiddenBy:
+          type: string
+          nullable: true
+          example: null
+        hiddenAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        author:
+          $ref: "#/components/schemas/PostAuthor"
+        stats:
+          $ref: "#/components/schemas/PostStats"
+        currentUserLiked:
+          type: boolean
+          example: false
+
+    CommentAuthor:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          example: jake.bradford@example.com
+
+    Comment:
+      type: object
+      required: [id, postId, userId, text, createdAt, updatedAt, author]
+      properties:
+        id:
+          type: string
+          example: 770e8400-e29b-41d4-a716-446655440002
+        postId:
+          type: string
+          example: 660e8400-e29b-41d4-a716-446655440001
+        userId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        text:
+          type: string
+          example: Great light in that first shot.
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:16:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:16:00.000Z
+        author:
+          $ref: "#/components/schemas/CommentAuthor"
+
+    Follow:
+      type: object
+      required: [id, followerId, followeeId, createdAt]
+      properties:
+        id:
+          type: string
+          example: 880e8400-e29b-41d4-a716-446655440003
+        followerId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440010
+        followeeId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:20:00.000Z
+
+    Like:
+      type: object
+      required: [id, postId, userId, createdAt]
+      properties:
+        id:
+          type: string
+          example: 990e8400-e29b-41d4-a716-446655440004
+        postId:
+          type: string
+          example: 660e8400-e29b-41d4-a716-446655440001
+        userId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440010
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:21:00.000Z
+
+    Moment:
+      type: object
+      required:
+        [id, userId, imageUrl, caption, status, createdAt, expiresAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: moment_1783417870915
+        userId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        imageUrl:
+          type: string
+          example: /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+        caption:
+          type: string
+          example: Afternoon lab break.
+        status:
+          type: string
+          enum: [active, archived, hidden]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:30:00.000Z
+        expiresAt:
+          type: string
+          format: date-time
+          example: 2026-07-09T09:30:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2026-07-08T09:30:00.000Z
+        hiddenBy:
+          type: string
+          nullable: true
+          example: null
+        hiddenAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    UploadedFile:
+      type: object
+      required: [fileId, url, size, mimetype]
+      properties:
+        fileId:
+          type: string
+          example: 5f9439f1
+        url:
+          type: string
+          example: /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+        size:
+          type: integer
+          example: 284193
+        mimetype:
+          type: string
+          example: image/jpeg
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: jake.bradford@example.com
+        password:
+          type: string
+          minLength: 6
+          example: password123
+        role:
+          type: string
+          enum: [user, moderator]
+          default: user
+          example: user
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: jake.bradford@example.com
+        password:
+          type: string
+          example: password123
+
+    CreatePostRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: Sunrise ride
+        description:
+          type: string
+          example: Cold start, good coffee, and an empty river path.
+        images:
+          type: array
+          items:
+            type: string
+          example:
+            - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Sunrise ride, second pass
+        description:
+          type: string
+          example: Updated after the upload finished.
+        images:
+          type: array
+          items:
+            type: string
+          example:
+            - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+
+    CreateCommentRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          example: Great light in that first shot.
+
+    CreateMomentRequest:
+      type: object
+      required: [imageUrl]
+      properties:
+        imageUrl:
+          type: string
+          example: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/5f9439f1.jpg
+        caption:
+          type: string
+          example: Afternoon lab break.
+
+    UploadUrlRequest:
+      type: object
+      required: [postId]
+      properties:
+        postId:
+          type: string
+          example: 660e8400-e29b-41d4-a716-446655440001
+
+    AuthResponse:
+      type: object
+      required: [message, user, token]
+      properties:
+        message:
+          type: string
+          example: Created successfully
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    UserResponse:
+      type: object
+      required: [message, user]
+      properties:
+        message:
+          type: string
+          example: Success
+        user:
+          $ref: "#/components/schemas/EnrichedUser"
+
+    UserListResponse:
+      type: object
+      required: [message, users]
+      properties:
+        message:
+          type: string
+          example: Success
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnrichedUser"
+
+    PostResponse:
+      type: object
+      required: [message, post]
+      properties:
+        message:
+          type: string
+          example: Success
+        post:
+          $ref: "#/components/schemas/Post"
+
+    PostListResponse:
+      type: object
+      required: [message, posts]
+      properties:
+        message:
+          type: string
+          example: Success
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Post"
+
+    CommentResponse:
+      type: object
+      required: [message, comment]
+      properties:
+        message:
+          type: string
+          example: Created successfully
+        comment:
+          $ref: "#/components/schemas/Comment"
+
+    CommentListResponse:
+      type: object
+      required: [message, comments]
+      properties:
+        message:
+          type: string
+          example: Success
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+
+    FollowResponse:
+      type: object
+      required: [message, follow]
+      properties:
+        message:
+          type: string
+          example: User followed
+        follow:
+          $ref: "#/components/schemas/Follow"
+
+    LikeResponse:
+      type: object
+      required: [message, like]
+      properties:
+        message:
+          type: string
+          example: Post liked
+        like:
+          $ref: "#/components/schemas/Like"
+
+    MomentResponse:
+      type: object
+      required: [message, moment]
+      properties:
+        message:
+          type: string
+          example: Created successfully
+        moment:
+          $ref: "#/components/schemas/Moment"
+
+    MomentListResponse:
+      type: object
+      required: [message, moments]
+      properties:
+        message:
+          type: string
+          example: Success
+        moments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Moment"
+
+    UploadUrlResponse:
+      type: object
+      required: [message, uploadUrl, fileId]
+      properties:
+        message:
+          type: string
+          example: Success
+        uploadUrl:
+          type: string
+          example: /v1/uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1
+        fileId:
+          type: string
+          example: 5f9439f1
+
+    UploadFileResponse:
+      type: object
+      required: [message, file]
+      properties:
+        message:
+          type: string
+          example: Success
+        file:
+          $ref: "#/components/schemas/UploadedFile"
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: Deleted successfully
+
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: ValidationError
+            message: Title is required
+    Unauthorised:
+      description: Missing, invalid, or expired bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Unauthorised
+            message: Invalid or expired token
+    Forbidden:
+      description: Authenticated user is not allowed to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Forbidden
+            message: You can only modify your own posts
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: NotFound
+            message: Post not found
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Health check
+      description: Returns a simple liveness payload used for local and manual verification.
+      responses:
+        "200":
+          description: Server is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                timestamp: 2026-07-08T09:14:23.000Z
+
+  /v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Register user
+      description: Creates a new user account and immediately returns a JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            example:
+              email: jake.bradford@example.com
+              password: password123
+              role: user
+      responses:
+        "201":
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+              example:
+                message: User registered successfully
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  username: jake.bradford@example.com
+                  email: jake.bradford@example.com
+                  role: user
+                  createdAt: 2026-07-08T09:00:00.000Z
+                  updatedAt: 2026-07-08T09:00:00.000Z
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email is already taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Conflict
+                message: Email already exists
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Login user
+      description: Authenticates an existing user and returns a fresh JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              email: jake.bradford@example.com
+              password: password123
+      responses:
+        "200":
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+              example:
+                message: Login successful
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  username: jake.bradford@example.com
+                  email: jake.bradford@example.com
+                  role: user
+                  createdAt: 2026-07-08T09:00:00.000Z
+                  updatedAt: 2026-07-08T09:00:00.000Z
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Unauthorised
+                message: Invalid email or password
+
+  /v1/users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List users
+      description: |
+        Returns public user profiles. If a bearer token is supplied, each user also includes
+        currentUserFollows based on the authenticated caller.
+      parameters:
+        - in: query
+          name: q
+          required: false
+          description: Optional case-insensitive username search fragment.
+          schema:
+            type: string
+            example: alex
+        - $ref: "#/components/parameters/QueryLimit"
+      responses:
+        "200":
+          description: Matching users.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+              example:
+                message: Success
+                users:
+                  - id: 550e8400-e29b-41d4-a716-446655440000
+                    username: jake.bradford@example.com
+                    email: jake.bradford@example.com
+                    role: user
+                    createdAt: 2026-07-08T09:00:00.000Z
+                    updatedAt: 2026-07-08T09:00:00.000Z
+                    stats:
+                      followers: 12
+                      following: 7
+                      posts: 4
+                    currentUserFollows: false
+
+  /v1/users/{id}:
+    get:
+      tags: [Users]
+      operationId: getUserProfile
+      summary: Get user profile
+      description: Returns one public user profile with follower, following, and post counts.
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: User found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+              example:
+                message: Success
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  username: jake.bradford@example.com
+                  email: jake.bradford@example.com
+                  role: user
+                  createdAt: 2026-07-08T09:00:00.000Z
+                  updatedAt: 2026-07-08T09:00:00.000Z
+                  stats:
+                    followers: 12
+                    following: 7
+                    posts: 4
+                  currentUserFollows: false
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Users]
+      operationId: deleteOwnAccount
+      summary: Delete own account
+      description: Deletes the authenticated user's own account and cascades related posts, comments, likes, follows, moments, and uploads.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Account deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/users/{userId}/follow:
+    post:
+      tags: [Follows]
+      operationId: followUser
+      summary: Follow user
+      description: Creates a follower relationship from the authenticated user to the target user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+      responses:
+        "201":
+          description: Follow created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponse"
+              example:
+                message: User followed
+                follow:
+                  id: 880e8400-e29b-41d4-a716-446655440003
+                  followerId: 550e8400-e29b-41d4-a716-446655440010
+                  followeeId: 550e8400-e29b-41d4-a716-446655440000
+                  createdAt: 2026-07-08T09:20:00.000Z
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Attempted to follow yourself.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You cannot follow yourself
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Authenticated user already follows the target user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Conflict
+                message: You are already following this user
+    delete:
+      tags: [Follows]
+      operationId: unfollowUser
+      summary: Unfollow user
+      description: Removes a follower relationship.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+      responses:
+        "200":
+          description: Follow removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: User unfollowed
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          description: Target user not found or relationship did not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                userMissing:
+                  value:
+                    error: NotFound
+                    message: User not found
+                relationshipMissing:
+                  value:
+                    error: NotFound
+                    message: You are not following this user
+
+  /v1/users/{userId}/followers:
+    get:
+      tags: [Follows]
+      operationId: getFollowers
+      summary: Get followers
+      description: Lists enriched user objects for everyone following the target user.
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+      responses:
+        "200":
+          description: Followers returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, followers]
+                properties:
+                  message:
+                    type: string
+                  followers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EnrichedUser"
+              example:
+                message: Success
+                followers:
+                  - id: 550e8400-e29b-41d4-a716-446655440010
+                    username: matthew.mckague@example.com
+                    email: matthew.mckague@example.com
+                    role: user
+                    createdAt: 2026-07-01T09:00:00.000Z
+                    updatedAt: 2026-07-01T09:00:00.000Z
+                    stats:
+                      followers: 3
+                      following: 11
+                      posts: 2
+                    currentUserFollows: false
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/users/{userId}/following:
+    get:
+      tags: [Follows]
+      operationId: getFollowing
+      summary: Get following
+      description: Lists enriched user objects for everyone the target user currently follows.
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+      responses:
+        "200":
+          description: Following list returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, following]
+                properties:
+                  message:
+                    type: string
+                  following:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EnrichedUser"
+              example:
+                message: Success
+                following:
+                  - id: 550e8400-e29b-41d4-a716-446655440000
+                    username: alan.yu@example.com
+                    email: alan.yu@example.com
+                    role: user
+                    createdAt: 2026-07-08T09:00:00.000Z
+                    updatedAt: 2026-07-08T09:00:00.000Z
+                    stats:
+                      followers: 12
+                      following: 7
+                      posts: 4
+                    currentUserFollows: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/posts:
+    post:
+      tags: [Posts]
+      operationId: createPost
+      summary: Create post
+      description: Creates a new post for the authenticated user. Description and images are optional.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostRequest"
+            example:
+              title: Sunrise ride
+              description: Cold start, good coffee, and an empty river path.
+              images:
+                - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+      responses:
+        "201":
+          description: Post created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+              example:
+                message: Created successfully
+                post:
+                  id: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  title: Sunrise ride
+                  description: Cold start, good coffee, and an empty river path.
+                  images:
+                    - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+                  status: active
+                  createdAt: 2026-07-08T09:10:00.000Z
+                  updatedAt: 2026-07-08T09:10:00.000Z
+                  hiddenBy: null
+                  hiddenAt: null
+                  author:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    username: jake.bradford@example.com
+                  stats:
+                    likes: 0
+                    comments: 0
+                  currentUserLiked: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /v1/posts/user/{userId}:
+    get:
+      tags: [Posts]
+      operationId: getUserPosts
+      summary: Get posts by user
+      description: Returns the target user's posts in reverse chronological order. Hidden posts are only visible to the author and moderators.
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: User posts returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostListResponse"
+              example:
+                message: Success
+                posts:
+                  - id: 660e8400-e29b-41d4-a716-446655440001
+                    userId: 550e8400-e29b-41d4-a716-446655440000
+                    title: Sunrise ride
+                    description: Cold start, good coffee, and an empty river path.
+                    images: []
+                    status: active
+                    createdAt: 2026-07-08T09:10:00.000Z
+                    updatedAt: 2026-07-08T09:10:00.000Z
+                    author:
+                      id: 550e8400-e29b-41d4-a716-446655440000
+                      username: jake.bradford@example.com
+                    stats:
+                      likes: 3
+                      comments: 1
+                    currentUserLiked: false
+        "404":
+          description: Target user does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: User not found
+
+  /v1/posts/{id}:
+    get:
+      tags: [Posts]
+      operationId: getPost
+      summary: Get post
+      description: Retrieves one post. Hidden posts are only visible to the post owner and moderators.
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Post returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+              example:
+                message: Success
+                post:
+                  id: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  title: Sunrise ride
+                  description: Cold start, good coffee, and an empty river path.
+                  images:
+                    - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+                  status: active
+                  createdAt: 2026-07-08T09:10:00.000Z
+                  updatedAt: 2026-07-08T09:10:00.000Z
+                  hiddenBy: null
+                  hiddenAt: null
+                  author:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    username: jake.bradford@example.com
+                  stats:
+                    likes: 3
+                    comments: 1
+                  currentUserLiked: false
+        "403":
+          description: Hidden post requested by a non-owner, non-moderator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You do not have permission to view this post
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Posts]
+      operationId: updatePost
+      summary: Update post
+      description: Updates a post. Only the post author can perform this action.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePostRequest"
+            example:
+              title: Sunrise ride, second pass
+              description: Updated after the upload finished.
+              images:
+                - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+      responses:
+        "200":
+          description: Post updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+              example:
+                message: Updated successfully
+                post:
+                  id: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  title: Sunrise ride, second pass
+                  description: Updated after the upload finished.
+                  images:
+                    - /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+                  status: active
+                  createdAt: 2026-07-08T09:10:00.000Z
+                  updatedAt: 2026-07-08T09:22:00.000Z
+                  hiddenBy: null
+                  hiddenAt: null
+                  author:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    username: jake.bradford@example.com
+                  stats:
+                    likes: 3
+                    comments: 1
+                  currentUserLiked: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Posts]
+      operationId: deletePost
+      summary: Delete post
+      description: Deletes a post and cascades associated comments and likes. Only the post author can delete it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Post deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Non-owner attempted delete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You can only delete your own posts
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/posts/{id}/like:
+    post:
+      tags: [Posts]
+      operationId: likePost
+      summary: Like post
+      description: Adds a like from the authenticated user to the target post.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "201":
+          description: Like created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+              example:
+                message: Post liked
+                like:
+                  id: 990e8400-e29b-41d4-a716-446655440004
+                  postId: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440010
+                  createdAt: 2026-07-08T09:21:00.000Z
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: User already liked the post.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Conflict
+                message: You have already liked this post
+    delete:
+      tags: [Posts]
+      operationId: unlikePost
+      summary: Unlike post
+      description: Removes the authenticated user's like from the target post.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Like removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Post unliked
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          description: Post not found or user had not liked the post.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                postMissing:
+                  value:
+                    error: NotFound
+                    message: Post not found
+                likeMissing:
+                  value:
+                    error: NotFound
+                    message: You have not liked this post
+
+  /v1/posts/{id}/hide:
+    post:
+      tags: [Posts]
+      operationId: hidePost
+      summary: Hide post
+      description: Moderator-only action that marks a post as hidden.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Post hidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostResponse"
+              example:
+                message: Updated successfully
+                post:
+                  id: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  title: Sunrise ride
+                  description: Cold start, good coffee, and an empty river path.
+                  images: []
+                  status: hidden
+                  createdAt: 2026-07-08T09:10:00.000Z
+                  updatedAt: 2026-07-08T09:40:00.000Z
+                  hiddenBy: 550e8400-e29b-41d4-a716-446655440999
+                  hiddenAt: 2026-07-08T09:40:00.000Z
+                  author:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    username: jackson.riding@example.com
+                  stats:
+                    likes: 3
+                    comments: 1
+                  currentUserLiked: false
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Caller is authenticated but not a moderator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: Moderator role required
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/posts/{postId}/comments:
+    get:
+      tags: [Comments]
+      operationId: getPostComments
+      summary: Get comments for post
+      description: Returns comments in ascending creation order.
+      parameters:
+        - $ref: "#/components/parameters/PostIdParam"
+      responses:
+        "200":
+          description: Comments returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentListResponse"
+              example:
+                message: Success
+                comments:
+                  - id: 770e8400-e29b-41d4-a716-446655440002
+                    postId: 660e8400-e29b-41d4-a716-446655440001
+                    userId: 550e8400-e29b-41d4-a716-446655440010
+                    text: Great light in that first shot.
+                    createdAt: 2026-07-08T09:16:00.000Z
+                    updatedAt: 2026-07-08T09:16:00.000Z
+                    author:
+                      id: 550e8400-e29b-41d4-a716-446655440010
+                      username: matthew.mckague@example.com
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Comments]
+      operationId: createComment
+      summary: Create comment
+      description: Adds a comment to a post as the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PostIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+            example:
+              text: Great light in that first shot.
+      responses:
+        "201":
+          description: Comment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+              example:
+                message: Created successfully
+                comment:
+                  id: 770e8400-e29b-41d4-a716-446655440002
+                  postId: 660e8400-e29b-41d4-a716-446655440001
+                  userId: 550e8400-e29b-41d4-a716-446655440010
+                  text: Great light in that first shot.
+                  createdAt: 2026-07-08T09:16:00.000Z
+                  updatedAt: 2026-07-08T09:16:00.000Z
+                  author:
+                    id: 550e8400-e29b-41d4-a716-446655440010
+                    username: matthew.mckague@example.com
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/posts/{postId}/comments/{commentId}:
+    delete:
+      tags: [Comments]
+      operationId: deleteComment
+      summary: Delete comment
+      description: Deletes a comment. Only the comment author can delete it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PostIdParam"
+        - $ref: "#/components/parameters/CommentIdParam"
+      responses:
+        "200":
+          description: Comment deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Non-author attempted delete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You can only delete your own comments
+        "404":
+          description: Comment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: Comment not found
+
+  /v1/feed:
+    get:
+      tags: [Feed]
+      operationId: getPersonalFeed
+      summary: Get personal feed
+      description: Returns posts from accounts the authenticated user follows, newest first.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/QueryLimit"
+        - $ref: "#/components/parameters/QueryOffset"
+      responses:
+        "200":
+          description: Feed returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostListResponse"
+              example:
+                message: Success
+                posts:
+                  - id: 660e8400-e29b-41d4-a716-446655440011
+                    userId: 550e8400-e29b-41d4-a716-446655440010
+                    title: Campus coffee stop
+                    description: Fast break before the next lab.
+                    images: []
+                    status: active
+                    createdAt: 2026-07-08T09:12:00.000Z
+                    updatedAt: 2026-07-08T09:12:00.000Z
+                    author:
+                      id: 550e8400-e29b-41d4-a716-446655440010
+                      username: matthew.mckague@example.com
+                    stats:
+                      likes: 1
+                      comments: 0
+                    currentUserLiked: false
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          description: Authenticated user ID no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: User not found
+
+  /v1/moments:
+    post:
+      tags: [Moments]
+      operationId: createMoment
+      summary: Create moment
+      description: Creates a new 24-hour moment for the authenticated user.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMomentRequest"
+            example:
+              imageUrl: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/5f9439f1.jpg
+              caption: Afternoon lab break.
+      responses:
+        "201":
+          description: Moment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentResponse"
+              example:
+                message: Created successfully
+                moment:
+                  id: moment_1783417870915
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  imageUrl: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/5f9439f1.jpg
+                  caption: Afternoon lab break.
+                  status: active
+                  createdAt: 2026-07-08T09:30:00.000Z
+                  expiresAt: 2026-07-09T09:30:00.000Z
+                  updatedAt: 2026-07-08T09:30:00.000Z
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /v1/moments/feed:
+    get:
+      tags: [Moments]
+      operationId: getMomentFeed
+      summary: Get moment feed
+      description: Returns active moments from the authenticated user and accounts they follow.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active moments returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentListResponse"
+              example:
+                message: Success
+                moments:
+                  - id: moment_1783417870915
+                    userId: 550e8400-e29b-41d4-a716-446655440000
+                    imageUrl: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/5f9439f1.jpg
+                    caption: Afternoon lab break.
+                    status: active
+                    createdAt: 2026-07-08T09:30:00.000Z
+                    expiresAt: 2026-07-09T09:30:00.000Z
+                    updatedAt: 2026-07-08T09:30:00.000Z
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          description: Authenticated user ID no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: User not found
+
+  /v1/moments/archive:
+    get:
+      tags: [Moments]
+      operationId: getMomentArchive
+      summary: Get moment archive
+      description: Returns archived moments after lifecycle normalization.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Archived moments returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentListResponse"
+              example:
+                message: Success
+                moments:
+                  - id: moment_1783320000000
+                    userId: 550e8400-e29b-41d4-a716-446655440000
+                    imageUrl: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/4a89ab12.jpg
+                    caption: Yesterday's run.
+                    status: archived
+                    createdAt: 2026-07-07T08:00:00.000Z
+                    expiresAt: 2026-07-08T08:00:00.000Z
+                    updatedAt: 2026-07-08T08:00:10.000Z
+                    archivedAt: 2026-07-08T08:00:10.000Z
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "404":
+          description: Authenticated user ID no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: User not found
+
+  /v1/moments/{id}:
+    delete:
+      tags: [Moments]
+      operationId: deleteMoment
+      summary: Delete moment
+      description: Deletes a moment. The owner or a moderator may perform this action.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Moment deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: Deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Authenticated user is neither the moment owner nor a moderator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You do not have permission to delete this moment
+        "404":
+          description: Moment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: Moment not found
+
+  /v1/moments/{id}/hide:
+    post:
+      tags: [Moments]
+      operationId: hideMoment
+      summary: Hide moment
+      description: Moderator-only action that marks a moment as hidden.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Moment hidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentResponse"
+              example:
+                message: Updated successfully
+                moment:
+                  id: moment_1783417870915
+                  userId: 550e8400-e29b-41d4-a716-446655440000
+                  imageUrl: /uploads/550e8400-e29b-41d4-a716-446655440000/post_12345678/5f9439f1.jpg
+                  caption: Afternoon lab break.
+                  status: hidden
+                  createdAt: 2026-07-08T09:30:00.000Z
+                  expiresAt: 2026-07-09T09:30:00.000Z
+                  updatedAt: 2026-07-08T09:42:00.000Z
+                  hiddenBy: 550e8400-e29b-41d4-a716-446655440999
+                  hiddenAt: 2026-07-08T09:42:00.000Z
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: Caller is authenticated but not a moderator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: Moderator role required
+        "404":
+          description: Moment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: NotFound
+                message: Moment not found
+
+  /v1/uploads/url:
+    post:
+      tags: [Uploads]
+      operationId: getUploadUrl
+      summary: Get upload URL
+      description: |
+        Generates a one-time local upload path for an authenticated user's post image.
+        The returned uploadUrl should then be used with PUT multipart form-data.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+            example:
+              postId: 660e8400-e29b-41d4-a716-446655440001
+      responses:
+        "200":
+          description: Upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+              example:
+                message: Success
+                uploadUrl: /v1/uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1
+                fileId: 5f9439f1
+        "400":
+          description: postId missing from request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: ValidationError
+                message: postId is required to generate an upload URL
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /v1/uploads/{userId}/{postId}/{fileId}:
+    put:
+      tags: [Uploads]
+      operationId: uploadFile
+      summary: Upload file
+      description: |
+        Uploads a single image using multipart form-data.
+
+        Requirements:
+        - Field name must be file
+        - Allowed MIME types: image/jpeg, image/png, image/gif, image/webp
+        - Maximum file size: 10 MB
+        - userId in the path must match the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserIdParam"
+        - $ref: "#/components/parameters/PostIdParam"
+        - $ref: "#/components/parameters/FileIdParam"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: File stored locally and public URL returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadFileResponse"
+              example:
+                message: Success
+                file:
+                  fileId: 5f9439f1
+                  url: /uploads/550e8400-e29b-41d4-a716-446655440000/660e8400-e29b-41d4-a716-446655440001/5f9439f1.jpg
+                  size: 284193
+                  mimetype: image/jpeg
+        "400":
+          description: Missing file or invalid file payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingFile:
+                  value:
+                    error: ValidationError
+                    message: No file provided
+                invalidMime:
+                  value:
+                    error: ValidationError
+                    message: "Invalid file type. Allowed: JPEG, PNG, GIF, WebP"
+                fileTooLarge:
+                  value:
+                    error: ValidationError
+                    message: "File too large. Maximum size: 10MB"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          description: userId in the path does not match the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: You can only upload files for your own user ID
