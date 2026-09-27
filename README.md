@@ -1,10 +1,10 @@
 # CAB432 Assignment 2 - Track B: Repository Custodian
 
-This repository contains the implementation for the CAB432 Assignment 2 Track B project: a small cloud-native repository custodian built around Amazon Bedrock, MCP tooling, and event-driven AWS workflows.
+This repository is being developed for the CAB432 Assignment 2 Track B project: a small cloud-native repository custodian built around Amazon Bedrock, MCP tooling, and event-driven AWS workflows. It contains the original Strobe Python server, the supplied ACP chat client, and the retrieval/indexing module with its MCP server. The grounded ACP mode is implemented, but live model inference is currently blocked by an AWS service control policy; issue triage, scheduled digests, and cloud deployment remain planned work.
 
-The system is intentionally scoped to a practical, demonstrable architecture rather than a large multi-agent platform. It supports:
+The intended system is deliberately scoped to a practical, demonstrable architecture rather than a large multi-agent platform. It brings together the implemented repository retrieval and MCP path with these capabilities:
 
-- grounded repository Q&A using documentation and repository context
+- grounded repository Q&A using documentation and repository context (agent wired; live inference blocked)
 - asynchronous GitHub issue triage
 - scheduled daily repository digest generation
 - a conversational frontend for interacting with the agent
@@ -20,21 +20,15 @@ The system is designed around:
 - asynchronous background processing for GitHub issue triage
 - scheduled automation for regular digests and maintenance-style runs
 
-## Core capabilities
+## Core capabilities and roadmap
 
 ### 1. Grounded repository questions
 
-A user can ask questions such as:
-
-- How does authentication work?
-- Where is the API configured?
-- What is the deployment flow?
-
-The system retrieves relevant repository context from documentation and project files, passes that context to Amazon Bedrock, and answers using the retrieved material rather than relying purely on model memory.
+The repository-grounded ACP mode retrieves relevant indexed documentation through the MCP server and sends it to Amazon Bedrock for an answer with source paths and line ranges. A live grounded chat has been verified using NVIDIA Nemotron 3 Super 120B. This model accepts text only; use deterministic mode to exercise the supplied ACP client's inline image handling. Example questions include "How does authentication work?", "Where is the API configured?", and "What is the deployment flow?"
 
 ### 2. Asynchronous GitHub issue triage
 
-When a GitHub issue is opened, a webhook-driven workflow processes the issue asynchronously:
+The planned issue-triage workflow will process opened GitHub issues asynchronously:
 
 - webhook validation and ingestion
 - queue-based processing
@@ -50,7 +44,7 @@ Example output includes:
 
 ### 3. Scheduled daily digest
 
-A recurring EventBridge trigger runs a digest job that inspects completed triage results and produces a concise daily summary stored in DynamoDB for later retrieval by the UI.
+The planned EventBridge schedule will invoke a digest job that reads completed triage results and stores a concise daily summary in DynamoDB for retrieval by the UI.
 
 ## Recommended architecture
 
@@ -88,7 +82,7 @@ EventBridge schedule
   -> DynamoDB
 ```
 
-## Repository layout
+## Intended component layout
 
 ```text
 repository-custodian/
@@ -117,6 +111,8 @@ This repository is intended to be developed as a cloud-focused project. Local de
 
 The `webui/` directory contains the ACP WebUI supplied for the CAB432 practical, including its deterministic agent for local client testing. The deterministic agent is only a protocol/UI test fixture; it does not call Bedrock or access repository data.
 
+The grounded ACP mode is selected with `AGENT_MODE=bedrock` and requires the local MCP server plus AWS permission to invoke the configured Bedrock model. Its default is `nvidia.nemotron-super-3-120b`. See [`webui/README.md`](webui/README.md) for setup instructions; deterministic mode remains the default for tests.
+
 With Node.js installed, start the client and deterministic agent in separate terminals:
 
 ```bash
@@ -132,6 +128,28 @@ npm run dev
 
 Open the local URL printed by Vite. The supplied client currently connects to `ws://127.0.0.1:7331/acp`. The production endpoint will be configured when the ACP agent and frontend deployment are wired together.
 
+### Repository context retrieval
+
+`repository_context.py` indexes a small, curated set of existing project documentation into the Assignment 2 S3 Vectors index and searches it using Amazon Bedrock text embeddings. It includes the root project README, the supplied ACP client README, the Strobe server README, and the Strobe Insomnia API description. It does not index source files, credentials, or the whole repository.
+
+The configured index uses 1024-dimensional cosine vectors and Amazon Titan Text Embeddings V2. From the repository root, authenticate to AWS and install the custodian dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+python repository_context.py index
+python repository_context.py search "How does authentication work?"
+```
+
+Indexing makes Bedrock embedding requests and writes or replaces vectors with the `repo-custodian/` key prefix in the existing index. Search returns the closest document chunks with their source paths and line ranges.
+
+The same module exposes repository search as an MCP tool. Run it as a separate process from the agent:
+
+```bash
+python repository_context.py serve
+```
+
+The server uses Streamable HTTP at `http://127.0.0.1:3001/mcp` by default and binds to loopback so the MCP endpoint is not exposed on other network interfaces. `MCP_HOST` and `MCP_PORT` can override its bind address and port for a suitably restricted deployment. The `search_repository_context` tool returns matching source excerpts with line ranges.
+
 ## Configuration expectations
 
 The final implementation should follow the assignment requirements:
@@ -144,7 +162,7 @@ The final implementation should follow the assignment requirements:
 
 ## Submission considerations
 
-This repository should be able to support the assignment submission requirements, including:
+The completed project will need to demonstrate the assignment requirements, including:
 
 - a functioning chat interface conversation
 - one or more retrieval-grounded answers
