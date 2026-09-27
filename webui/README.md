@@ -49,14 +49,13 @@ The endpoint must be reachable directly by the browser; the image does not proxy
 
 ## Docker
 
-The Docker image serves the built static web client only. It does not proxy or start an ACP agent.
-
 ```bash
-docker build -t acp-chat-web-client .
-docker run --rm -p 8080:80 acp-chat-web-client
+docker build -f webui/Dockerfile --target webui -t repo-custodian-webui .
+docker build -f webui/Dockerfile --target agent -t repo-custodian-agent .
+docker build -f webui/Dockerfile --target mcp -t repo-custodian-mcp .
 ```
 
-For an HTTPS deployment, set a `wss://` endpoint in `web/main.ts`. The theme toggle switches between light and dark mode and remembers the choice in the browser; the default behavior follows the system theme.
+The production multi-stage Dockerfile is built from the repository root and has `webui`, `agent`, and `mcp` targets. The frontend selects a same-origin `wss://` endpoint and its Nginx server proxies `/acp` to the agent in the ECS task. The development build continues to use `ws://127.0.0.1:7331/acp`. The theme toggle switches between light and dark mode and remembers the choice in the browser; the default behavior follows the system theme.
 
 When the deterministic server is bound to all interfaces, set the public origin used in its image Markdown response:
 

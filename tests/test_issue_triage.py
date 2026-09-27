@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 
 from botocore.exceptions import ClientError
@@ -253,7 +254,7 @@ class TriageTests(unittest.TestCase):
 class DailyDigestTests(unittest.TestCase):
     def test_generates_and_persists_digest_for_recent_completed_issues(self) -> None:
         issue = {
-            "issueNumber": 17,
+            "issueNumber": Decimal("17"),
             "repoFullName": "student/repository",
             "issueUrl": "https://github.com/student/repository/issues/17",
             "category": "bug",
@@ -282,6 +283,7 @@ class DailyDigestTests(unittest.TestCase):
         self.assertEqual(saved["issueCount"], 1)
         self.assertEqual(saved["digest"], bedrock.response)
         self.assertEqual(saved["issueReferences"][0]["issueNumber"], 17)
+        self.assertIsInstance(saved["issueReferences"][0]["issueNumber"], int)
         self.assertEqual(bedrock.requests[0]["modelId"], issue_triage.DEFAULT_MODEL_ID)
 
     def test_creates_a_no_issues_digest_and_duplicate_run_is_idempotent(self) -> None:

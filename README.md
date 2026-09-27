@@ -6,7 +6,7 @@ The intended system is deliberately scoped to a practical, demonstrable architec
 
 - grounded repository Q&A using documentation and repository context
 - asynchronous GitHub issue triage (deployed and end-to-end tested with a synthetic issue)
-- scheduled daily repository digest generation (handler implemented; schedule setup in progress)
+- scheduled daily repository digest generation (scheduled for 8:00 AM Brisbane time and verified)
 - a conversational frontend for interacting with the agent
 
 ## Project purpose
@@ -43,7 +43,7 @@ Example output includes:
 
 ### 3. Scheduled daily digest
 
-`issue_triage.py` includes an EventBridge digest handler. It reads completed issue records from the last 24 hours, asks the configured Bedrock model for a concise evidence-bounded summary, and stores one digest per Brisbane calendar day in the existing tagged agent-run table. Repeated invocations for the same day do not create duplicate digest records. The local unit tests cover populated and empty digest windows, persistence, and duplicate handling; the daily EventBridge schedule remains to be configured.
+`issue_triage.py` includes an EventBridge digest handler. It reads completed issue records from the last 24 hours, asks the configured Bedrock model for a concise evidence-bounded summary, and stores one digest per Brisbane calendar day in the existing tagged agent-run table. Repeated invocations for the same day do not create duplicate digest records. The tagged EventBridge rule `n12550281-a2-digest-0800` runs at 8:00 AM Brisbane time (`cron(0 22 * * ? *)` UTC). A scheduled invocation was verified to persist a completed digest for five issues. The local unit tests cover populated and empty digest windows, persistence, and duplicate handling.
 
 ## Recommended architecture
 
@@ -59,6 +59,12 @@ The solution follows the Track B design expectations:
 - DynamoDB for issue and digest records
 - ECS Fargate for the runtime components
 - Secrets Manager for the GitHub webhook HMAC secret (no GitHub PAT is needed for inbound issue events)
+
+## Chat deployment
+
+The production Dockerfile builds the frontend, ACP agent, and repository MCP server as separate images from the repository root context. The frontend serves the built UI and proxies `/acp` WebSocket connections to the agent in the same ECS task. The agent calls the MCP server over the task-local network and uses the ECS task role for Bedrock and S3 Vectors access.
+
+The planned chat endpoint uses `n12550281.cab432.com` and is intended to be restricted to the user's client IPv4 address at the load balancer because the current ACP client does not implement user authentication. The `webui`, `agent`, and `mcp` container images have been built and pushed to the tagged ECR repositories `n12550281-a2-custodian-webui`, `n12550281-a2-custodian-agent`, and `n12550281-a2-custodian-mcp`. The ECS service and public ingress are not deployed: AWS explicitly denies `ec2:CreateSecurityGroup` under `Do-Not-Delete-LT1-AllowPolicy-AND-DenyPolicy-1`. Do not expose the model-backed endpoint broadly or reuse another student's security group.
 
 ## High-level flow
 

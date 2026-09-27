@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -384,9 +385,14 @@ def _recent_completed_issues(issue_table: Any, since: datetime) -> list[dict[str
             request["ExclusiveStartKey"] = last_evaluated_key
         response = issue_table.scan(**request)
         for item in response.get("Items", []):
+            issue_number = item["issueNumber"]
+            if isinstance(issue_number, Decimal):
+                if issue_number != issue_number.to_integral_value():
+                    raise ValueError("Completed issue record contains a non-integer issue number")
+                issue_number = int(issue_number)
             records.append(
                 {
-                    "issueNumber": item["issueNumber"],
+                    "issueNumber": issue_number,
                     "repoFullName": item["repoFullName"],
                     "issueUrl": item["issueUrl"],
                     "category": item["category"],
