@@ -1,0 +1,80 @@
+cloudInfrastructure:
+  - type: Bedrock model
+    arn: arn:aws:bedrock:ap-southeast-2::foundation-model/nvidia.nemotron-super-3-120b
+    description: NVIDIA Nemotron 3 Super 120B text model used by the grounded repository agent and issue triage.
+
+  - type: ECS service
+    arn: arn:aws:ecs:ap-southeast-2:901444280953:service/n12550281-a2-custodian/n12550281-a2-custodian-svc
+    description: Fargate service with one private task running the WebUI, ACP agent, and MCP sidecar; public IP assignment is disabled. Browser endpoint is https://n12550281.cab432.com.
+
+  - type: Vector store
+    arn: arn:aws:s3vectors:ap-southeast-2:901444280953:bucket/n12550281-a2-vectors/index/repo-context
+    description: S3 Vectors index containing curated repository documentation, using 1024-dimensional Titan Text Embeddings V2 vectors.
+
+  - type: MCP server
+    arn: http://127.0.0.1:3001/mcp
+    description: Streamable HTTP MCP endpoint bound to task-local loopback in the ECS task; not routed through the public ALB.
+
+  - type: SQS queue
+    arn: arn:aws:sqs:ap-southeast-2:901444280953:n12550281-repo-custodian-triage
+    description: Receives verified GitHub issue-opened events for asynchronous triage by the worker Lambda.
+
+  - type: SQS queue
+    arn: arn:aws:sqs:ap-southeast-2:901444280953:n12550281-repo-custodian-triage-dlq
+    description: Dead-letter queue for issue-triage messages that could not be processed.
+
+  - type: EventBridge rule
+    arn: arn:aws:events:ap-southeast-2:901444280953:rule/n12550281-a2-digest-0800
+    description: Enabled daily schedule at 8:00 AM Brisbane time (cron(0 22 * * ? *) UTC), invoking the daily digest Lambda.
+
+  - type: Secrets Manager secret
+    arn: arn:aws:secretsmanager:ap-southeast-2:901444280953:secret:n12550281-repo-custodian-webhook-TEA8Sl
+    description: GitHub webhook HMAC secret used to authenticate incoming issue events; no secret value is included here.
+
+  - type: S3 bucket
+    arn: arn:aws:s3vectors:ap-southeast-2:901444280953:bucket/n12550281-a2-vectors
+    description: S3 Vectors bucket that contains the repository-context index.
+
+  - type: DynamoDB table
+    arn: arn:aws:dynamodb:ap-southeast-2:901444280953:table/n12550281-repo-custodian-issues
+    description: Stores issue-triage status, classification, priority, and summary.
+
+  - type: DynamoDB table
+    arn: arn:aws:dynamodb:ap-southeast-2:901444280953:table/n12550281-ddb-a2-agentruns
+    description: Stores daily digest records keyed by Brisbane calendar date.
+
+  - type: Lambda function
+    arn: arn:aws:lambda:ap-southeast-2:901444280953:function:n12550281-repo-custodian-webhook
+    description: Verifies GitHub webhook HMAC signatures and enqueues supported issue events.
+
+  - type: Lambda function
+    arn: arn:aws:lambda:ap-southeast-2:901444280953:function:n12550281-repo-custodian-triage-worker
+    description: Consumes the issue-triage SQS queue, classifies issues with Bedrock, and persists results to DynamoDB.
+
+  - type: Lambda function
+    arn: arn:aws:lambda:ap-southeast-2:901444280953:function:n12550281-repo-custodian-daily-digest
+    description: Builds and stores one evidence-bounded digest per Brisbane calendar day.
+
+  - type: Application Load Balancer
+    arn: arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:loadbalancer/app/n12550281-a2-custodian-alb/8695e4ee9b5aa81d
+    description: Public ALB uses the supplied CAB432SG unchanged, redirects HTTP to HTTPS with the issued ACM certificate, and forwards browser traffic to the WebUI.
+
+  - type: API Gateway REST API
+    arn: arn:aws:apigateway:ap-southeast-2::/restapis/tkjwq24v4g
+    description: Regional webhook API endpoint https://tkjwq24v4g.execute-api.ap-southeast-2.amazonaws.com/prod/webhook.
+
+  - type: ECR repository
+    arn: arn:aws:ecr:ap-southeast-2:901444280953:repository/n12550281-a2-custodian-webui
+    description: Tagged container image repository for the WebUI.
+
+  - type: ECR repository
+    arn: arn:aws:ecr:ap-southeast-2:901444280953:repository/n12550281-a2-custodian-agent
+    description: Tagged container image repository for the ACP agent.
+
+  - type: ECR repository
+    arn: arn:aws:ecr:ap-southeast-2:901444280953:repository/n12550281-a2-custodian-mcp
+    description: Tagged container image repository for the repository-context MCP server.
+
+metaData:
+  track: "B"
+  qutUsernameTag: n12550281@qut.edu.au
