@@ -64,7 +64,9 @@ The solution follows the Track B design expectations:
 
 The production Dockerfile builds the frontend, ACP agent, and repository MCP server as separate images from the repository root context. The frontend serves the built UI and proxies `/acp` WebSocket connections to the agent in the same ECS task. The agent calls the MCP server over the task-local network and uses the ECS task role for Bedrock and S3 Vectors access.
 
-The planned chat endpoint uses `n12550281.cab432.com` and is intended to be restricted to the user's client IPv4 address at the load balancer because the current ACP client does not implement user authentication. The `webui`, `agent`, and `mcp` container images have been built and pushed to the tagged ECR repositories `n12550281-a2-custodian-webui`, `n12550281-a2-custodian-agent`, and `n12550281-a2-custodian-mcp`. The ECS service and public ingress are not deployed: AWS explicitly denies `ec2:CreateSecurityGroup` under `Do-Not-Delete-LT1-AllowPolicy-AND-DenyPolicy-1`. Do not expose the model-backed endpoint broadly or reuse another student's security group.
+The chat demo is deployed at `https://n12550281.cab432.com`. Its public Application Load Balancer redirects HTTP to HTTPS using the issued ACM certificate and the supplied `CAB432SG` without changing its rules. The endpoint is intentionally public for browser access; it is not restricted to a client IP.
+
+The Fargate service runs in the supplied private subnets with public IP assignment disabled and uses `CAB432SG` unchanged. The ALB forwards only to the WebUI on port 80; Nginx proxies `/acp` WebSocket traffic to the ACP agent on task-local loopback. The MCP server also binds to task-local loopback on port 3001 and has no ALB route. The three images are in the tagged ECR repositories `n12550281-a2-custodian-webui`, `n12550281-a2-custodian-agent`, and `n12550281-a2-custodian-mcp`. The chat exposes grounded repository search only, not AWS administration, secret access, or repository write actions.
 
 ## High-level flow
 
