@@ -1,11 +1,11 @@
 # CAB432 Assignment 2 - Track B: Repository Custodian
 
-This repository is being developed for the CAB432 Assignment 2 Track B project: a small cloud-native repository custodian built around Amazon Bedrock, MCP tooling, and event-driven AWS workflows. It contains the original Strobe Python server, the supplied ACP chat client, and the retrieval/indexing module with its MCP server. The grounded ACP mode is implemented, but live model inference is currently blocked by an AWS service control policy; issue triage, scheduled digests, and cloud deployment remain planned work.
+This repository is being developed for the CAB432 Assignment 2 Track B project: a small cloud-native repository custodian built around Amazon Bedrock, MCP tooling, and event-driven AWS workflows. It contains the original Strobe Python server, the supplied ACP chat client, curated repository retrieval with its MCP server, and the grounded ACP agent. Grounded chat was verified with NVIDIA Nemotron 3 Super 120B. The asynchronous issue-triage path is deployed and has processed a controlled, signed synthetic issue end to end; the GitHub repository webhook itself has not yet been configured.
 
 The intended system is deliberately scoped to a practical, demonstrable architecture rather than a large multi-agent platform. It brings together the implemented repository retrieval and MCP path with these capabilities:
 
-- grounded repository Q&A using documentation and repository context (agent wired; live inference blocked)
-- asynchronous GitHub issue triage
+- grounded repository Q&A using documentation and repository context
+- asynchronous GitHub issue triage (deployed and end-to-end tested with a synthetic issue)
 - scheduled daily repository digest generation
 - a conversational frontend for interacting with the agent
 
@@ -28,12 +28,11 @@ The repository-grounded ACP mode retrieves relevant indexed documentation throug
 
 ### 2. Asynchronous GitHub issue triage
 
-The planned issue-triage workflow will process opened GitHub issues asynchronously:
+`issue_triage.py` implements the webhook and SQS worker entry points. The deployed regional API Gateway endpoint is `https://tkjwq24v4g.execute-api.ap-southeast-2.amazonaws.com/prod/webhook`. It invokes the webhook Lambda, which verifies GitHub's SHA-256 HMAC using a dedicated Secrets Manager webhook secret, filters for opened issues, and queues a bounded issue payload. The SQS worker classifies the issue with Bedrock, validates the response fields, and stores a single idempotent result in the project's tagged DynamoDB table. A tagged SQS dead-letter queue handles messages that exceed the retry limit. The synthetic signed-event test traversed the API, both Lambdas, SQS, Bedrock, and DynamoDB successfully. Local unit tests use fake AWS clients; no GitHub PAT is used by this inbound webhook flow.
 
-- webhook validation and ingestion
-- queue-based processing
-- issue classification using Bedrock
-- persistence of triage results in DynamoDB
+The Phase 5 resources in `ap-southeast-2` are `n12550281-repo-custodian-issues`, `n12550281-repo-custodian-triage`, `n12550281-repo-custodian-triage-dlq`, `n12550281-repo-custodian-webhook`, `n12550281-repo-custodian-triage-worker`, and the `n12550281-repo-custodian-webhook-rest` API (`prod` stage). The webhook HMAC secret is `n12550281-repo-custodian-webhook`. All are tagged with the project QUT username and `purpose=assessment 2`.
+
+The GitHub repository webhook is not configured yet. When ready, configure an `issues` webhook for opened events to the endpoint above and use the `SecretString` from the dedicated webhook secret in Secrets Manager. Keep that value out of source control and messages.
 
 Example output includes:
 
@@ -59,7 +58,7 @@ The solution follows the Track B design expectations:
 - Amazon EventBridge for scheduled automation
 - DynamoDB for issue and digest records
 - ECS Fargate for the runtime components
-- Secrets Manager for credentials
+- Secrets Manager for the GitHub webhook HMAC secret (no GitHub PAT is needed for inbound issue events)
 
 ## High-level flow
 
@@ -106,6 +105,14 @@ This repository is intended to be developed as a cloud-focused project. Local de
 2. running the MCP server locally for tool access
 3. running the agent service locally for command and chat testing
 4. validating the webhook and triage flow with mocked payloads
+
+### Local issue-triage tests
+
+Run the standard-library unit tests from the repository root. They exercise HMAC verification, opened-issue enqueueing, invalid payload rejection, Bedrock result validation, idempotent issue processing, and SQS partial batch failure reporting without making AWS calls:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
 
 ### ACP chat client
 
