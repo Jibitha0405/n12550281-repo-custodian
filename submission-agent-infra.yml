@@ -1,7 +1,7 @@
 cloudInfrastructure:
   - type: Bedrock model
-    arn: arn:aws:bedrock:ap-southeast-2::foundation-model/nvidia.nemotron-super-3-120b
-    description: NVIDIA Nemotron 3 Super 120B text model used by the grounded repository agent and issue triage.
+    arn: nvidia.nemotron-super-3-120b
+    description: Bedrock model ID (not a student-owned, taggable ARN) for NVIDIA Nemotron 3 Super 120B, used by the grounded repository agent and issue triage.
 
   - type: ECS service
     arn: arn:aws:ecs:ap-southeast-2:901444280953:service/n12550281-a2-custodian/n12550281-a2-custodian-svc
