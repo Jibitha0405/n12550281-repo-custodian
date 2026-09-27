@@ -108,12 +108,29 @@ repository-custodian/
 
 This repository is intended to be developed as a cloud-focused project. Local development may include:
 
-1. running the MCP server locally for tool access
-2. running the agent service locally for command and chat testing
-3. validating the webhook and triage flow with mocked payloads
-4. using environment variables or local config files for non-production settings
+1. running the supplied ACP web client and its deterministic test agent
+2. running the MCP server locally for tool access
+3. running the agent service locally for command and chat testing
+4. validating the webhook and triage flow with mocked payloads
 
-The exact local run commands will depend on the final implementation structure chosen for the project.
+### ACP chat client
+
+The `webui/` directory contains the ACP WebUI supplied for the CAB432 practical, including its deterministic agent for local client testing. The deterministic agent is only a protocol/UI test fixture; it does not call Bedrock or access repository data.
+
+With Node.js installed, start the client and deterministic agent in separate terminals:
+
+```bash
+cd webui
+npm ci
+npm run server
+```
+
+```bash
+cd webui
+npm run dev
+```
+
+Open the local URL printed by Vite. The supplied client currently connects to `ws://127.0.0.1:7331/acp`. The production endpoint will be configured when the ACP agent and frontend deployment are wired together.
 
 ## Configuration expectations
 
