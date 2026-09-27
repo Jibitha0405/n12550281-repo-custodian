@@ -6,7 +6,7 @@ The intended system is deliberately scoped to a practical, demonstrable architec
 
 - grounded repository Q&A using documentation and repository context
 - asynchronous GitHub issue triage (deployed and end-to-end tested with a synthetic issue)
-- scheduled daily repository digest generation
+- scheduled daily repository digest generation (handler implemented; schedule setup in progress)
 - a conversational frontend for interacting with the agent
 
 ## Project purpose
@@ -43,7 +43,7 @@ Example output includes:
 
 ### 3. Scheduled daily digest
 
-The planned EventBridge schedule will invoke a digest job that reads completed triage results and stores a concise daily summary in DynamoDB for retrieval by the UI.
+`issue_triage.py` includes an EventBridge digest handler. It reads completed issue records from the last 24 hours, asks the configured Bedrock model for a concise evidence-bounded summary, and stores one digest per Brisbane calendar day in the existing tagged agent-run table. Repeated invocations for the same day do not create duplicate digest records. The local unit tests cover populated and empty digest windows, persistence, and duplicate handling; the daily EventBridge schedule remains to be configured.
 
 ## Recommended architecture
 
@@ -108,7 +108,7 @@ This repository is intended to be developed as a cloud-focused project. Local de
 
 ### Local issue-triage tests
 
-Run the standard-library unit tests from the repository root. They exercise HMAC verification, opened-issue enqueueing, invalid payload rejection, Bedrock result validation, idempotent issue processing, and SQS partial batch failure reporting without making AWS calls:
+Run the standard-library unit tests from the repository root. They exercise HMAC verification, opened-issue enqueueing, invalid payload rejection, Bedrock result validation, idempotent issue processing, SQS partial batch failure reporting, and daily digest generation without making AWS calls:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py" -v

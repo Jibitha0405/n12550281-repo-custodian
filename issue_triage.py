@@ -9,6 +9,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import boto3
 from botocore.exceptions import ClientError
@@ -19,6 +20,11 @@ DEFAULT_MODEL_ID = "nvidia.nemotron-super-3-120b"
 MAX_ISSUE_BODY_CHARACTERS = 100_000
 MAX_SQS_MESSAGE_BYTES = 240 * 1024
 PROCESSING_LEASE = timedelta(minutes=15)
+DAILY_DIGEST_MODEL_ID = DEFAULT_MODEL_ID
+DIGEST_WINDOW = timedelta(hours=24)
+DIGEST_ISSUE_LIMIT = 30
+MAX_DIGEST_CHARACTERS = 4000
+LOCAL_TIMEZONE = ZoneInfo("Australia/Brisbane")
 CATEGORIES = {"bug", "feature", "question", "documentation", "other"}
 PRIORITIES = {"critical", "high", "medium", "low"}
 LOGGER = logging.getLogger(__name__)
@@ -357,7 +363,164 @@ def triage_handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]
     return {"batchItemFailures": failures}
 
 
+def _recent_completed_issues(issue_table: Any, since: datetime) -> list[dict[str, Any]]:
+    """Read a bounded set of completed issues updated during the digest window."""
+    records: list[dict[str, Any]] = []
+    last_evaluated_key: dict[str, Any] | None = None
+    while len(records) < DIGEST_ISSUE_LIMIT:
+        request: dict[str, Any] = {
+            "FilterExpression": "#status = :completed AND updatedAt >= :since",
+            "ProjectionExpression": (
+                "issueNumber, repoFullName, issueUrl, category, priority, summary, updatedAt"
+            ),
+            "ExpressionAttributeNames": {"#status": "status"},
+            "ExpressionAttributeValues": {
+                ":completed": "COMPLETED",
+                ":since": since.isoformat(),
+            },
+            "Limit": DIGEST_ISSUE_LIMIT - len(records),
+        }
+        if last_evaluated_key:
+            request["ExclusiveStartKey"] = last_evaluated_key
+        response = issue_table.scan(**request)
+        for item in response.get("Items", []):
+            records.append(
+                {
+                    "issueNumber": item["issueNumber"],
+                    "repoFullName": item["repoFullName"],
+                    "issueUrl": item["issueUrl"],
+                    "category": item["category"],
+                    "priority": item["priority"],
+                    "summary": item["summary"][:500],
+                    "updatedAt": item["updatedAt"],
+                }
+            )
+            if len(records) >= DIGEST_ISSUE_LIMIT:
+                break
+        last_evaluated_key = response.get("LastEvaluatedKey")
+        if not last_evaluated_key:
+            break
+    return records
+
+
+def _daily_digest_text(issues: list[dict[str, Any]], client: Any) -> str:
+    model_id = os.environ.get("BEDROCK_MODEL_ID", DAILY_DIGEST_MODEL_ID)
+    response = client.converse(
+        modelId=model_id,
+        system=[
+            {
+                "text": (
+                    "Write a concise daily repository issue digest using only the supplied "
+                    "completed issue records. Summarize repeated themes, notable priorities, "
+                    "and actionable patterns. Do not infer facts that are not in the records. "
+                    "If the list is empty, clearly state that no issues were completed in the "
+                    "period. Keep the response under 400 words."
+                )
+            }
+        ],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "text": json.dumps(
+                            {"completedIssues": issues},
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    }
+                ],
+            }
+        ],
+        inferenceConfig={"maxTokens": 700, "temperature": 0.2},
+    )
+    blocks = response.get("output", {}).get("message", {}).get("content", [])
+    text = "\n".join(
+        block["text"] for block in blocks if isinstance(block, dict) and isinstance(block.get("text"), str)
+    ).strip()
+    if not text:
+        raise ValueError("Bedrock returned no text for the daily digest")
+    if len(text) > MAX_DIGEST_CHARACTERS:
+        raise ValueError("Bedrock daily digest exceeded the supported length")
+    return text
+
+
+def generate_daily_digest(
+    *,
+    bedrock_client: Any = None,
+    issue_table: Any = None,
+    run_table: Any = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Summarize the last 24 hours of completed issues and persist one record per Brisbane day."""
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        raise ValueError("Digest generation time must include a timezone")
+    current_time = current_time.astimezone(timezone.utc)
+
+    if issue_table is None:
+        issue_table_name = os.environ.get("ISSUE_TABLE_NAME")
+        if not issue_table_name:
+            raise RuntimeError("ISSUE_TABLE_NAME must identify the issue-triage DynamoDB table")
+        issue_table = boto3.resource("dynamodb", region_name=REGION).Table(issue_table_name)
+    if run_table is None:
+        run_table_name = os.environ.get("DIGEST_TABLE_NAME")
+        if not run_table_name:
+            raise RuntimeError("DIGEST_TABLE_NAME must identify the daily-digest DynamoDB table")
+        run_table = boto3.resource("dynamodb", region_name=REGION).Table(run_table_name)
+    if bedrock_client is None:
+        bedrock_client = boto3.client("bedrock-runtime", region_name=REGION)
+
+    window_start = current_time - DIGEST_WINDOW
+    issues = _recent_completed_issues(issue_table, window_start)
+    digest = _daily_digest_text(issues, bedrock_client)
+    local_date = current_time.astimezone(LOCAL_TIMEZONE).date().isoformat()
+    run_id = f"daily-digest#{local_date}"
+    item = {
+        "runId": run_id,
+        "runType": "daily-digest",
+        "status": "COMPLETED",
+        "digest": digest,
+        "issueCount": len(issues),
+        "issueReferences": [
+            {
+                "issueNumber": issue["issueNumber"],
+                "repoFullName": issue["repoFullName"],
+                "issueUrl": issue["issueUrl"],
+                "category": issue["category"],
+                "priority": issue["priority"],
+            }
+            for issue in issues
+        ],
+        "windowStart": window_start.isoformat(),
+        "generatedAt": current_time.isoformat(),
+        "modelId": os.environ.get("BEDROCK_MODEL_ID", DAILY_DIGEST_MODEL_ID),
+    }
+    try:
+        run_table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(runId)",
+        )
+    except ClientError as error:
+        if not _is_conditional_failure(error):
+            raise
+        LOGGER.info("Daily digest already exists for %s", local_date)
+        return {"status": "already_exists", "runId": run_id}
+
+    LOGGER.info("Saved daily digest %s for %s completed issues", run_id, len(issues))
+    return {"status": "created", "runId": run_id, "issueCount": len(issues)}
+
+
+def digest_handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:
+    """EventBridge target for the daily digest schedule."""
+    del event, context
+    result = generate_daily_digest()
+    return {"statusCode": 200, "body": json.dumps(result, separators=(",", ":"))}
+
+
 __all__ = [
+    "digest_handler",
+    "generate_daily_digest",
     "InvalidWebhook",
     "process_issue",
     "triage_handler",

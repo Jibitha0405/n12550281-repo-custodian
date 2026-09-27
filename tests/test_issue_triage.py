@@ -75,6 +75,39 @@ class FakeIssueTable:
         return {}
 
 
+class FakeDigestIssueTable:
+    def __init__(self, items: list[dict[str, object]]) -> None:
+        self.items = items
+        self.scans: list[dict[str, object]] = []
+
+    def scan(self, **kwargs: object) -> dict[str, object]:
+        self.scans.append(kwargs)
+        return {"Items": self.items}
+
+
+class FakeDigestRunTable:
+    def __init__(self) -> None:
+        self.items: dict[str, dict[str, object]] = {}
+        self.puts: list[dict[str, object]] = []
+
+    def put_item(self, **kwargs: object) -> dict[str, object]:
+        self.puts.append(kwargs)
+        item = kwargs["Item"]
+        run_id = item["runId"]
+        if run_id in self.items:
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Digest already exists",
+                    }
+                },
+                "PutItem",
+            )
+        self.items[run_id] = item
+        return {}
+
+
 def signed_event(payload: dict[str, object], *, action: str = "opened") -> dict[str, object]:
     body = json.dumps({"action": action, **payload}, separators=(",", ":"))
     digest = hmac.new(WEBHOOK_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
@@ -215,6 +248,73 @@ class TriageTests(unittest.TestCase):
             with patch.object(issue_triage, "process_issue", side_effect=[True, ValueError("bad")]):
                 result = issue_triage.triage_handler(event)
         self.assertEqual(result, {"batchItemFailures": [{"itemIdentifier": "bad"}]})
+
+
+class DailyDigestTests(unittest.TestCase):
+    def test_generates_and_persists_digest_for_recent_completed_issues(self) -> None:
+        issue = {
+            "issueNumber": 17,
+            "repoFullName": "student/repository",
+            "issueUrl": "https://github.com/student/repository/issues/17",
+            "category": "bug",
+            "priority": "high",
+            "summary": "Password reset leaves login unusable.",
+            "updatedAt": "2026-09-27T08:00:00+00:00",
+        }
+        issues = FakeDigestIssueTable([issue])
+        runs = FakeDigestRunTable()
+        bedrock = FakeBedrock("One high-priority bug was completed around password reset.")
+        fixed_now = issue_triage.datetime(2026, 9, 27, 9, 0, tzinfo=issue_triage.timezone.utc)
+
+        result = issue_triage.generate_daily_digest(
+            bedrock_client=bedrock,
+            issue_table=issues,
+            run_table=runs,
+            now=fixed_now,
+        )
+
+        self.assertEqual(result, {"status": "created", "runId": "daily-digest#2026-09-27", "issueCount": 1})
+        self.assertEqual(len(issues.scans), 1)
+        self.assertIn("updatedAt >= :since", issues.scans[0]["FilterExpression"])
+        self.assertEqual(issues.scans[0]["ExpressionAttributeValues"][":completed"], "COMPLETED")
+        saved = runs.items["daily-digest#2026-09-27"]
+        self.assertEqual(saved["status"], "COMPLETED")
+        self.assertEqual(saved["issueCount"], 1)
+        self.assertEqual(saved["digest"], bedrock.response)
+        self.assertEqual(saved["issueReferences"][0]["issueNumber"], 17)
+        self.assertEqual(bedrock.requests[0]["modelId"], issue_triage.DEFAULT_MODEL_ID)
+
+    def test_creates_a_no_issues_digest_and_duplicate_run_is_idempotent(self) -> None:
+        issues = FakeDigestIssueTable([])
+        runs = FakeDigestRunTable()
+        bedrock = FakeBedrock("No issues were completed during the last 24 hours.")
+        fixed_now = issue_triage.datetime(2026, 9, 27, 9, 0, tzinfo=issue_triage.timezone.utc)
+
+        created = issue_triage.generate_daily_digest(
+            bedrock_client=bedrock,
+            issue_table=issues,
+            run_table=runs,
+            now=fixed_now,
+        )
+        duplicate = issue_triage.generate_daily_digest(
+            bedrock_client=bedrock,
+            issue_table=issues,
+            run_table=runs,
+            now=fixed_now,
+        )
+
+        self.assertEqual(created["issueCount"], 0)
+        self.assertEqual(duplicate, {"status": "already_exists", "runId": "daily-digest#2026-09-27"})
+        self.assertEqual(runs.items["daily-digest#2026-09-27"]["issueReferences"], [])
+
+    def test_requires_timezone_aware_digest_time(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must include a timezone"):
+            issue_triage.generate_daily_digest(
+                bedrock_client=FakeBedrock("Digest"),
+                issue_table=FakeDigestIssueTable([]),
+                run_table=FakeDigestRunTable(),
+                now=issue_triage.datetime(2026, 9, 27, 9, 0),
+            )
 
 
 if __name__ == "__main__":
